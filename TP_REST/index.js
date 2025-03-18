@@ -8,6 +8,37 @@ const saltRounds = 10; // Niveau de hachage
 const app = express();
 const port = 8000;
 const sql = postgres({ db: "mydb", user: "user", password: "password", port: "5433" });
+const swaggerJsdoc = require("swagger-jsdoc");
+const swaggerUi = require("swagger-ui-express");
+
+// Définition des options de la documentation
+const swaggerOptions = {
+  definition: {
+    openapi: "3.0.0",
+    info: {
+      title: "Mon API REST",
+      version: "1.0.0",
+      description: "Documentation de l'API avec Swagger",
+    },
+    servers: [
+      {
+        url: "http://localhost:8000",
+        description: "Serveur de développement",
+      },
+    ],
+  },
+  apis: ["./index.js"], // Fichier où se trouvent les routes
+};
+
+// Générer la documentation Swagger
+const swaggerDocs = swaggerJsdoc(swaggerOptions);
+
+// Ajouter la route Swagger UI
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+
+console.log("📄 Documentation Swagger disponible sur : http://localhost:8000/api-docs");
+
+//////////////////////////////////////////////////////////////////
 
 app.use(express.json());
 
@@ -38,6 +69,27 @@ app.get("/", (req, res) => {
 });
 
 // Route GET /products/:id - Récupérer un produit spécifique
+
+/**
+ * @swagger
+ * /products/{id}:
+ *   get:
+ *     summary: Récupérer un produit spécifique
+ *     description: Retourne un produit par son ID.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID du produit
+ *     responses:
+ *       200:
+ *         description: Succès - Produit trouvé
+ *       404:
+ *         description: Erreur - Produit non trouvé
+ */
+
 app.get("/products/:id", async (req, res) => {
     try {
         const { id } = req.params;
@@ -54,6 +106,34 @@ app.get("/products/:id", async (req, res) => {
 });
 
 // Route GET /products - Récupérer tous les produits avec pagination
+
+/**
+ * @swagger
+ * /products:
+ *   get:
+ *     summary: Récupérer tous les produits
+ *     description: Retourne la liste de tous les produits avec pagination et filtres.
+ *     parameters:
+ *       - in: query
+ *         name: name
+ *         schema:
+ *           type: string
+ *         description: Filtrer par nom de produit
+ *       - in: query
+ *         name: about
+ *         schema:
+ *           type: string
+ *         description: Filtrer par description
+ *       - in: query
+ *         name: price
+ *         schema:
+ *           type: number
+ *         description: Filtrer par prix maximum
+ *     responses:
+ *       200:
+ *         description: Succès - Retourne la liste des produits
+ */
+
 app.get("/products", async (req, res) => {
     try {
         const { name, about, price } = req.query;
@@ -294,6 +374,33 @@ app.get("/f2p-games/:id", async (req, res) => {
 //Routes orders
 
 // Route POST /orders - Créer une nouvelle commande
+
+/**
+ * @swagger
+ * /orders:
+ *   post:
+ *     summary: Créer une commande
+ *     description: Crée une nouvelle commande avec une liste de produits.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               userId:
+ *                 type: integer
+ *               productIds:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *     responses:
+ *       201:
+ *         description: Commande créée avec succès
+ *       400:
+ *         description: Données invalides
+ */
+
 app.post("/orders", async (req, res) => {
     try {
         const { userId, productIds } = req.body;
@@ -393,6 +500,18 @@ app.delete("/orders/:id", async (req, res) => {
 //Routes reviews
 
 // Route POST /reviews - Ajouter un avis
+
+/**
+ * @swagger
+ * /reviews:
+ *   get:
+ *     summary: Récupérer tous les avis
+ *     description: Retourne la liste de tous les avis.
+ *     responses:
+ *       200:
+ *         description: Liste des avis récupérée avec succès
+ */
+
 app.post("/reviews", async (req, res) => {
     try {
         const { userId, productId, score, content } = req.body;
