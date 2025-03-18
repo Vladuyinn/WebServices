@@ -56,13 +56,37 @@ app.get("/products/:id", async (req, res) => {
 // Route GET /products - Récupérer tous les produits avec pagination
 app.get("/products", async (req, res) => {
     try {
-        const { page = 1, limit = 10 } = req.query;
-        const offset = (page - 1) * limit;
+        const { name, about, price } = req.query;
 
-        const products = await sql`SELECT * FROM products LIMIT ${limit} OFFSET ${offset}`;
+        let conditions = [];
+        let values = [];
+
+        if (name) {
+            conditions.push(`name ILIKE $${values.length + 1}`);
+            values.push(`%${name}%`);
+        }
+
+        if (about) {
+            conditions.push(`about ILIKE $${values.length + 1}`);
+            values.push(`%${about}%`);
+        }
+
+        if (price) {
+            conditions.push(`price <= $${values.length + 1}`);
+            values.push(price);
+        }
+
+        // Construire dynamiquement la requête SQL
+        const query = `
+        SELECT * FROM products
+        ${conditions.length > 0 ? "WHERE " + conditions.join(" AND ") : ""}
+      `;
+
+        const products = await sql.unsafe(query, values);
         res.json(products);
+
     } catch (error) {
-        res.status(500).json({ error: "Erreur serveur", details: error.message });
+        res.status(500).json({ error: "Erreur lors de la recherche", details: error.message });
     }
 });
 
@@ -76,7 +100,6 @@ app.post("/products", async (req, res) => {
 
         // Retourner le produit qui a été créé
         res.status(201).json({
-            message: "Produit créé avec succès",
             product: { name, about, price }
         });
 
@@ -116,7 +139,6 @@ app.post("/users", async (req, res) => {
         await sql`INSERT INTO users (username, password, email) VALUES (${username}, ${hashedPassword}, ${email})`;
 
         res.status(201).json({
-            message: "Utilisateur créé avec succès",
             user: { username, email } // Ne jamais renvoyer le mot de passe
         });
 
@@ -228,41 +250,214 @@ const FREE_TO_GAME_API = "https://www.freetogame.com/api/";
 
 // Route GET /f2p-games - Récupérer la liste des jeux
 app.get("/f2p-games", async (req, res) => {
-  try {
-    const response = await fetch(`${FREE_TO_GAME_API}/games`);
-    
-    if (!response.ok) {
-      throw new Error(`Erreur de l'API externe: ${response.statusText}`);
+    try {
+        const response = await fetch(`${FREE_TO_GAME_API}/games`);
+
+        if (!response.ok) {
+            throw new Error(`Erreur de l'API externe: ${response.statusText}`);
+        }
+
+        const games = await response.json();
+        res.json(games);
+
+    } catch (error) {
+        res.status(500).json({ error: "Erreur lors de la récupération des jeux", details: error.message });
     }
-
-    const games = await response.json();
-    res.json(games);
-
-  } catch (error) {
-    res.status(500).json({ error: "Erreur lors de la récupération des jeux", details: error.message });
-  }
 });
 
 // Route GET /f2p-games/:id - Récupérer un jeu par son ID
 app.get("/f2p-games/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const response = await fetch(`${FREE_TO_GAME_API}/game?id=${id}`);
+    try {
+        const { id } = req.params;
+        const response = await fetch(`${FREE_TO_GAME_API}/game?id=${id}`);
 
-    if (!response.ok) {
-      throw new Error(`Erreur de l'API externe: ${response.statusText}`);
+        if (!response.ok) {
+            throw new Error(`Erreur de l'API externe: ${response.statusText}`);
+        }
+
+        const game = await response.json();
+
+        // Vérifier si un jeu est trouvé
+        if (!game || Object.keys(game).length === 0) {
+            return res.status(404).json({ error: "Jeu non trouvé" });
+        }
+
+        res.json(game);
+
+    } catch (error) {
+        res.status(500).json({ error: "Erreur lors de la récupération du jeu", details: error.message });
     }
+});
 
-    const game = await response.json();
-    
-    // Vérifier si un jeu est trouvé
-    if (!game || Object.keys(game).length === 0) {
-      return res.status(404).json({ error: "Jeu non trouvé" });
+//////////////////////////////////////////////////////
+
+//Routes orders
+
+// Route POST /orders - Créer une nouvelle commande
+app.post("/orders", async (req, res) => {
+    try {
+        const { userId, productIds } = req.body;
+
+        if (!userId || !Array.isArray(productIds) || productIds.length === 0) {
+            return res.status(400).json({ error: "Données invalides" });
+        }
+
+        // Récupérer les prix des produits sélectionnés
+        const products = await sql`SELECT id, price FROM products WHERE id = ANY(${productIds})`;
+
+        if (products.length !== productIds.length) {
+            return res.status(400).json({ error: "Un ou plusieurs produits sont invalides" });
+        }
+
+        // Calculer le total avec la TVA (1.2)
+        const total = products.reduce((sum, p) => sum + p.price, 0) * 1.2;
+
+        const newOrder = {
+            userId,
+            productIds,
+            total,
+            payment: false,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        };
+
+        // Insérer la commande en base
+        await sql`
+      INSERT INTO orders (userId, productIds, total, payment, createdAt, updatedAt) 
+      VALUES (${newOrder.userId}, ${newOrder.productIds}, ${newOrder.total}, ${newOrder.payment}, ${newOrder.createdAt}, ${newOrder.updatedAt})
+    `;
+
+        res.status(201).json( newOrder );
+
+    } catch (error) {
+        res.status(500).json({ error: "Erreur lors de la création de la commande", details: error.message });
     }
+});
 
-    res.json(game);
+// Route GET /orders - Récupérer toutes les commandes
+app.get("/orders", async (req, res) => {
+    try {
+        const orders = await sql`SELECT * FROM orders`;
+        res.json(orders);
+    } catch (error) {
+        res.status(500).json({ error: "Erreur lors de la récupération des commandes", details: error.message });
+    }
+});
 
-  } catch (error) {
-    res.status(500).json({ error: "Erreur lors de la récupération du jeu", details: error.message });
-  }
+// Route GET /orders/:id - Récupérer une commande spécifique avec détails utilisateur et produits
+app.get("/orders/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Récupérer la commande
+        const orders = await sql`SELECT * FROM orders WHERE id = ${id}`;
+        if (orders.length === 0) {
+            return res.status(404).json({ error: "Commande non trouvée" });
+        }
+
+        const order = orders[0];
+
+        // Récupérer les informations de l'utilisateur
+        const users = await sql`SELECT id, username, email FROM users WHERE id = ${order.userId}`;
+        const user = users[0] || null;
+
+        // Récupérer les informations des produits
+        const products = await sql`SELECT * FROM products WHERE id = ANY(${order.productids})`;
+
+        res.json({ ...order, user, products });
+
+    } catch (error) {
+        res.status(500).json({ error: "Erreur lors de la récupération de la commande", details: error.message });
+    }
+});
+
+// Route DELETE /orders/:id - Supprimer une commande
+app.delete("/orders/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await sql`DELETE FROM orders WHERE id = ${id}`;
+
+        if (result.count === 0) {
+            return res.status(404).json({ error: "Commande non trouvée" });
+        }
+
+        res.json({ message: "Commande supprimée avec succès" });
+
+    } catch (error) {
+        res.status(500).json({ error: "Erreur lors de la suppression de la commande", details: error.message });
+    }
+});
+
+//////////////////////////////////////////////////////
+
+//Routes reviews
+
+// Route POST /reviews - Ajouter un avis
+app.post("/reviews", async (req, res) => {
+    try {
+        const { userId, productId, score, content } = req.body;
+
+        if (!userId || !productId || !score || !content || score < 1 || score > 5) {
+            return res.status(400).json({ error: "Données invalides" });
+        }
+
+        // Insérer l'avis
+        const result = await sql`
+        INSERT INTO reviews (userId, productId, score, content)
+        VALUES (${userId}, ${productId}, ${score}, ${content})
+        RETURNING *`;
+
+        console.log("Résultat de l'insertion :", result);
+
+        // Mettre à jour la moyenne des scores du produit
+        await sql`
+        UPDATE products
+        SET averageScore = (SELECT AVG(score) FROM reviews WHERE productId = ${productId})
+        WHERE id = ${productId}`;
+
+        res.status(201).json( result[0] );
+
+    } catch (error) {
+        res.status(500).json({ error: "Erreur lors de l'ajout de l'avis", details: error.message });
+    }
+});
+
+//GET reviews
+
+app.get("/reviews", async (req, res) => {
+    try {
+      const reviews = await sql`
+        SELECT r.id, r.userId, u.username, r.productId, p.name AS productName, r.score, r.content, r.createdAt, r.updatedAt
+        FROM reviews r
+        JOIN users u ON r.userId = u.id
+        JOIN products p ON r.productId = p.id
+        ORDER BY r.createdAt DESC`;
+  
+      res.json(reviews);
+    } catch (error) {
+      res.status(500).json({ error: "Erreur lors de la récupération des avis", details: error.message });
+    }
+  });
+  
+
+// Route GET /products/:id - Inclure les avis d'un produit
+app.get("/products/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Récupérer le produit
+        const products = await sql`SELECT * FROM products WHERE id = ${id}`;
+        if (products.length === 0) {
+            return res.status(404).json({ error: "Produit non trouvé" });
+        }
+        const product = products[0];
+
+        // Récupérer les avis du produit
+        const reviews = await sql`SELECT * FROM reviews WHERE productId = ${id}`;
+
+        res.json({ ...product, reviews });
+
+    } catch (error) {
+        res.status(500).json({ error: "Erreur lors de la récupération du produit", details: error.message });
+    }
 });
