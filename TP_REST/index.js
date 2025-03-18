@@ -30,9 +30,8 @@ const UserSchema = z.object({
 
 const CreateUserSchema = UserSchema.omit({ id: true });
 
-// Routes Resources
-
-/////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////
+// Routes produits 
 
 app.get("/", (req, res) => {
     res.send("<p style= \"white-space:pre-line\">/products/:id - Récupère un produit. \n /products/ - Récupère tous les produits. \n /products/ - Crée un nouveau produit grâce au body de la requête HTTP. \n DELETE products/:id - Supprime un produit.</p>");
@@ -217,4 +216,53 @@ app.patch("/users/:id", async (req, res) => {
 
 app.listen(port, () => {
     console.log(`Listening on http://localhost:${port}`);
+});
+
+
+//////////////////////////////////////////////////////
+
+//Routes f2g
+
+// Base URL de l'API FreeToGame
+const FREE_TO_GAME_API = "https://www.freetogame.com/api/";
+
+// Route GET /f2p-games - Récupérer la liste des jeux
+app.get("/f2p-games", async (req, res) => {
+  try {
+    const response = await fetch(`${FREE_TO_GAME_API}/games`);
+    
+    if (!response.ok) {
+      throw new Error(`Erreur de l'API externe: ${response.statusText}`);
+    }
+
+    const games = await response.json();
+    res.json(games);
+
+  } catch (error) {
+    res.status(500).json({ error: "Erreur lors de la récupération des jeux", details: error.message });
+  }
+});
+
+// Route GET /f2p-games/:id - Récupérer un jeu par son ID
+app.get("/f2p-games/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const response = await fetch(`${FREE_TO_GAME_API}/game?id=${id}`);
+
+    if (!response.ok) {
+      throw new Error(`Erreur de l'API externe: ${response.statusText}`);
+    }
+
+    const game = await response.json();
+    
+    // Vérifier si un jeu est trouvé
+    if (!game || Object.keys(game).length === 0) {
+      return res.status(404).json({ error: "Jeu non trouvé" });
+    }
+
+    res.json(game);
+
+  } catch (error) {
+    res.status(500).json({ error: "Erreur lors de la récupération du jeu", details: error.message });
+  }
 });
