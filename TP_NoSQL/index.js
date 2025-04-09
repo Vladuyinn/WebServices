@@ -1,5 +1,6 @@
 // All other imports here.
 const { MongoClient } = require("mongodb");
+const { ObjectId } = require("mongodb");
 const express = require("express");
 const z = require("zod");
 
@@ -68,6 +69,56 @@ app.get("/products", async (req, res) => {
         .toArray();
 
     res.send(result);
+});
+
+// GET /products/:id - Lire un seul produit
+app.get("/products/:id", async (req, res) => {
+    try {
+        const product = await db.collection("products").findOne({ _id: new ObjectId(req.params.id) });
+
+        if (!product) {
+            return res.status(404).send({ error: "Produit non trouvé" });
+        }
+
+        res.send(product);
+    } catch (err) {
+        res.status(400).send({ error: "ID invalide" });
+    }
+});
+
+// PUT /products/:id - Mettre à jour un produit
+app.put("/products/:id", async (req, res) => {
+    const result = await CreateProductSchema.safeParse(req.body);
+    if (!result.success) return res.status(400).send(result);
+
+    try {
+        const { name, about, price, categoryIds } = result.data;
+        const categoryObjectIds = categoryIds.map((id) => new ObjectId(id));
+
+        const ack = await db.collection("products").updateOne(
+            { _id: new ObjectId(req.params.id) },
+            { $set: { name, about, price, categoryIds: categoryObjectIds } }
+        );
+
+        if (ack.matchedCount === 0) return res.status(404).send({ error: "Produit non trouvé" });
+
+        res.send({ _id: req.params.id, name, about, price, categoryIds: categoryObjectIds });
+    } catch (err) {
+        res.status(400).send({ error: "ID invalide" });
+    }
+});
+
+// DELETE /products/:id - Supprimer un produit
+app.delete("/products/:id", async (req, res) => {
+    try {
+        const ack = await db.collection("products").deleteOne({ _id: new ObjectId(req.params.id) });
+
+        if (ack.deletedCount === 0) return res.status(404).send({ error: "Produit non trouvé" });
+
+        res.status(204).send(); // No content
+    } catch (err) {
+        res.status(400).send({ error: "ID invalide" });
+    }
 });
 
 app.post("/categories", async (req, res) => {
