@@ -62,5 +62,30 @@ app.post('/goals', async (req, res) => {
     }
 });
 
+app.get('/goals/:goalId/details', async (req, res) => {
+    try {
+        const goal = await Goal.findById(req.params.goalId);
+        if (!goal) return res.status(404).json({ error: 'Goal non trouvé' });
+
+        const visitorId = goal.visitor;
+
+        // Récupération des views et actions liés à ce visitor
+        const [views, actions] = await Promise.all([
+            View.find({ visitor: visitorId }),
+            Action.find({ visitor: visitorId })
+        ]);
+
+        res.json({
+            goal,
+            views,
+            actions
+        });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
 const PORT = 3000;
 app.listen(PORT, () => console.log(`Serveur API en écoute sur http://localhost:${PORT}`));
